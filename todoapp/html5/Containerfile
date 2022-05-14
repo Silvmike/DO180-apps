@@ -1,0 +1,5 @@
+FROM docker.io/library/httpd:2.4-alpine
+
+ADD src/ /var/www/html
+
+CMD run-httpd

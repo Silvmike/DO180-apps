@@ -1,0 +1,4 @@
+FROM docker.io/library/node:18-alpine3.14
+ADD . / app/
+RUN (cd app; npm install)
+CMD (cd app; npm run)
