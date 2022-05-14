@@ -1,0 +1,95 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: todoapp-static-build
+spec:
+  lookupPolicy:
+    local: false
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: todoapp-static-build
+  labels:
+    name: todoapp-static-build
+spec:
+  triggers:
+    - type: ConfigChange
+  source:
+    contextDir: todoapp/html5/
+    type: Git
+    git:
+      uri: https://github.com/Silvmike/DO180-apps.git
+      ref: "todoapp-yaml"
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: "Containerfile"
+  output:
+    to:
+      kind: ImageStreamTag
+      name: 'todoapp-static-build:latest'
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: todoapp-nodejs-build
+spec:
+  lookupPolicy:
+    local: false
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: todoapp-nodejs-build
+  labels:
+    name: todoapp-nodejs-build
+spec:
+  triggers:
+    - type: ConfigChange
+  source:
+    contextDir: todoapp/nodejs/
+    type: Git
+    git:
+      uri: https://github.com/Silvmike/DO180-apps.git
+      ref: "todoapp-yaml"
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: "Containerfile"
+  output:
+    to:
+      kind: ImageStreamTag
+      name: 'todoapp-nodejs-build:latest'
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: todoapp-nodejs-api-build
+spec:
+  lookupPolicy:
+    local: false
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: todoapp-nodejs-api-build
+  labels:
+    name: todoapp-nodejs-api-build
+spec:
+  triggers:
+    - type: ConfigChange
+  source:
+    contextDir: todoapp/nodejs_api/
+    type: Git
+    git:
+      uri: https://github.com/Silvmike/DO180-apps.git
+      ref: "todoapp-yaml"
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: "Containerfile"
+  output:
+    to:
+      kind: ImageStreamTag
+      name: 'todoapp-nodejs-api-build:latest'
