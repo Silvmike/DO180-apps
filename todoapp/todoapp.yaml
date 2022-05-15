@@ -1,0 +1,323 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: todoapp-static-build
+spec:
+  lookupPolicy:
+    local: false
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: todoapp-static-build
+  labels:
+    name: todoapp-static-build
+spec:
+  triggers:
+    - type: ConfigChange
+  source:
+    contextDir: todoapp/html5/
+    type: Git
+    git:
+      uri: https://github.com/Silvmike/DO180-apps.git
+      ref: "todoapp-yaml"
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: "Containerfile"
+  output:
+    to:
+      kind: ImageStreamTag
+      name: 'todoapp-static-build:latest'
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: todoapp-nodejs-api-build
+spec:
+  lookupPolicy:
+    local: false
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: todoapp-nodejs-api-build
+  labels:
+    name: todoapp-nodejs-api-build
+spec:
+  triggers:
+    - type: ConfigChange
+  source:
+    contextDir: todoapp/nodejs_api/
+    type: Git
+    git:
+      uri: https://github.com/Silvmike/DO180-apps.git
+      ref: "todoapp-yaml"
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: "Containerfile"
+  output:
+    to:
+      kind: ImageStreamTag
+      name: 'todoapp-nodejs-api-build:latest'
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: todoapp-mysql
+stringData:
+  database-name: sampledb
+  database-password: gR0reeNE1eofnV5x
+  database-root-password: VXcEPP6HaBG2Sebe
+  database-user: userHK8
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: todoapp-mysql
+spec:
+  ports:
+  - name: todoapp-mysql
+    port: 3306
+  selector:
+    name: todoapp-mysql
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: todoapp-db-init
+spec:
+  parallelism: 1    
+  completions: 1    
+  activeDeadlineSeconds: 1800 
+  backoffLimit: 6   
+  template:         
+    metadata:
+      name: todoapp-db-init
+    spec:
+      containers:
+      - name: todoapp-db-init
+        image: registry.redhat.io/rhel8/mariadb-103:1-177
+        env:
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              key: database-user
+              name: todoapp-mysql
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: database-password
+              name: todoapp-mysql
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: database-root-password
+              name: todoapp-mysql
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              key: database-name
+              name: todoapp-mysql
+        command: ["/bin/sh"]
+        args: ["-c", "echo 'CREATE TABLE IF NOT EXISTS Item(id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, description VARCHAR(2048), done BOOLEAN);' | mysql --host=$TODOAPP_MYSQL_SERVICE_HOST --port=$TODOAPP_MYSQL_SERVICE_PORT --user=$MYSQL_USER --password=$MYSQL_PASSWORD $MYSQL_DATABASE" ]
+      restartPolicy: Never    
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: todoapp-mysql
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
+metadata:
+  name: todoapp-mysql
+spec:
+  replicas: 1
+  selector:
+    name: todoapp-mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        name: todoapp-mysql
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              key: database-user
+              name: todoapp-mysql
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: database-password
+              name: todoapp-mysql
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: database-root-password
+              name: todoapp-mysql
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              key: database-name
+              name: todoapp-mysql
+        image: ' '
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -i
+            - -c
+            - MYSQL_PWD="$MYSQL_PASSWORD" mysqladmin -u $MYSQL_USER ping
+          initialDelaySeconds: 30
+          timeoutSeconds: 1
+        name: todoapp-mysql
+        ports:
+        - containerPort: 3306
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -i
+            - -c
+            - MYSQL_PWD="$MYSQL_PASSWORD" mysqladmin -u $MYSQL_USER ping
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+        resources:
+          limits:
+            memory: 512Mi
+        volumeMounts:
+        - mountPath: /var/lib/mysql/data
+          name: mysql-data
+      volumes:
+      - name: mysql-data
+        persistentVolumeClaim:
+          claimName: todoapp-mysql
+  triggers:
+  - imageChangeParams:
+      automatic: true
+      containerNames:
+      - todoapp-mysql
+      from:
+        kind: ImageStreamTag
+        name: mariadb:10.3-el8
+        namespace: openshift
+    type: ImageChange
+  - type: ConfigChange
+---
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
+metadata:
+  name: todoapp
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: todoapp
+    spec:
+      containers:
+        - name: httpd-static
+          image: 'ignored'
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+
+        - name: nodejs-api
+          image: 'ignored'
+          imagePullPolicy: Always
+          env:
+            - name: PORT
+              value: "30080"
+            - name: TODOAPP_MYSQL_SERVICE_NAME
+              value: todoapp-mysql
+            - name: TODOAPP_MYSQL_SERVICE_PORT
+              value: "3306"
+            - name: MYSQL_ENV_MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  key: database-name
+                  name: todoapp-mysql
+            - name: MYSQL_ENV_MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  key: database-user
+                  name: todoapp-mysql
+            - name: MYSQL_ENV_MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: database-password
+                  name: todoapp-mysql
+          ports:
+            - containerPort: 30080
+              protocol: TCP
+
+  triggers:
+    - type: ConfigChange
+    - imageChangeParams:
+        automatic: false
+        containerNames:
+          - httpd-static
+        from:
+          kind: ImageStreamTag
+          name: todoapp-static-build:latest
+      type: ImageChange
+    - imageChangeParams:
+        automatic: false
+        containerNames:
+          - nodejs-api
+        from:
+          kind: ImageStreamTag
+          name: todoapp-nodejs-api-build:latest
+      type: ImageChange
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: todoapp
+spec:
+  ports:
+  - name: todoapp-node-api
+    port: 30080
+  - name: todoapp-static
+    port: 8080
+  selector:
+    app: todoapp
+---
+apiVersion: v1
+kind: Route
+metadata:
+  name: todoapp-api
+spec:
+  host: todo.apps.test.silvmike.ru
+  path: /todo
+  port:
+     targetPort: todoapp-node-api
+  to:
+    kind: Service
+    name: todoapp
+---
+apiVersion: v1
+kind: Route
+metadata:
+  name: todoapp
+spec:
+  host: todo.apps.test.silvmike.ru
+  port:
+     targetPort: todoapp-static
+  to:
+    kind: Service
+    name: todoapp
