@@ -6,4 +6,4 @@ Then execute
 oc apply -f todoapp.yaml
 ```
 
-![Deployment diagram](./todoapp.svg)
+![Deployment diagram](./todoapp-new.svg)
